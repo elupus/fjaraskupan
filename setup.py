@@ -23,6 +23,7 @@ setup(
         "tests": [
             "pytest>3.6.4",
             "pytest-mock",
+            "pytest-cov",
         ]
     },
     url="https://github.com/elupus/fjaraskupan",

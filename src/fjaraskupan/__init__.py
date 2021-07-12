@@ -63,7 +63,7 @@ class State:
             carbon_filter_full=data[9] == "K",
             dim_level=_range_check_dim(int(data[10:13]), self.dim_level),
             periodic_venting=_range_check_period(
-                int(data[13:14]), self.periodic_venting
+                int(data[13:15]), self.periodic_venting
             ),
         )
 
@@ -190,10 +190,10 @@ class Device:
         await self.send_command(COMMAND_FORMAT_AFTERCOOKINGSTRENGTHMANUAL.format(speed))
         self.state = replace(self.state, after_cooking_fan_speed=speed)
 
-    async def send_periodic_venting(self, period: int):
+    async def send_periodic_venting(self, minutes: int):
         """Set periodic venting."""
-        await self.send_command(COMMAND_FORMAT_PERIODIC_VENTING.format(period))
-        self.state = replace(self.state, periodic_venting=period)
+        await self.send_command(COMMAND_FORMAT_PERIODIC_VENTING.format(minutes))
+        self.state = replace(self.state, periodic_venting=minutes)
 
     async def send_dim(self, level: int):
         """Ask to dim to a certain level."""
