@@ -1,4 +1,5 @@
 """Device communication library."""
+from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, replace
@@ -109,16 +110,35 @@ def device_filter(device: BLEDevice, advertisement_data: AdvertisementData) -> b
 class Device:
     """Communication handler."""
 
-    def __init__(self, device: BLEDevice, keycode=b"1234") -> None:
+    def __init__(self, device: BLEDevice | str, keycode=b"1234") -> None:
         """Initialize handler."""
         self.device = device
         self._keycode = keycode
         self.state = State()
         self.lock = asyncio.Lock()
+        self._client: None | BleakClient = None
+        self._client_count = 0
+
+    async def __aenter__(self):
+        async with self.lock:
+            if self._client_count == 0:
+                self._client = BleakClient(self.device)
+                await self._client.__aenter__()
+            self._client_count += 1
+            return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        async with self.lock:
+            self._client_count -= 1
+            if self._client_count == 0:
+                await self._client.__aexit__(exc_type, exc_val, exc_tb)
+                self._client = None
 
     @property
     def address(self):
         """Return address of the device."""
+        if isinstance(self.device, str):
+            return self.device
         return str(self.device.address)
 
     def characteristic_callback(self, data: bytearray):
@@ -155,17 +175,18 @@ class Device:
 
     async def update(self):
         """Update internal state."""
-        async with self.lock:
-            async with BleakClient(self.device) as client:
-                databytes = await client.read_gatt_char(UUID_RX)
+        async with self:
+            async with self.lock:
+                databytes = await self._client.read_gatt_char(UUID_RX)
                 self.characteristic_callback(databytes)
 
-    async def send_command(self, cmd):
+    async def send_command(self, cmd: str):
         """Send given command."""
-        async with self.lock:
-            async with BleakClient(self.device) as client:
+        assert len(cmd) == 8
+        async with self:
+            async with self.lock:
                 data = self._keycode + cmd.encode("ASCII")
-                await client.write_gatt_char(UUID_RX, data, True)
+                await self._client.write_gatt_char(UUID_RX, data, True)
 
         if cmd == COMMAND_STOP_FAN:
             self.state = replace(self.state, fan_speed=0)
