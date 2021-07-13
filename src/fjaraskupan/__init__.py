@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, replace
 import logging
+from typing import Any
 from uuid import UUID
 
 from bleak import BleakClient
@@ -50,8 +51,9 @@ class State:
     dim_level: int = 0
     periodic_venting: int = 0
     periodic_venting_on: bool = False
+    rssi: int = 0
 
-    def replace_from_tx_char(self, databytes: bytes):
+    def replace_from_tx_char(self, databytes: bytes, **changes: Any):
         """Update state based on tx characteristics."""
         data = databytes.decode("ASCII")
         return replace(
@@ -66,9 +68,10 @@ class State:
             periodic_venting=_range_check_period(
                 int(data[13:15]), self.periodic_venting
             ),
+            **changes
         )
 
-    def replace_from_manufacture_data(self, data: bytes):
+    def replace_from_manufacture_data(self, data: bytes, **changes: Any):
         """Update state based on broadcasted data."""
         return replace(
             self,
@@ -82,6 +85,7 @@ class State:
             carbon_filter_available=_bittest(data[11], 2),
             dim_level=_range_check_dim(data[13], self.dim_level),
             periodic_venting=_range_check_period(data[14], self.periodic_venting),
+            **changes
         )
 
 
@@ -153,7 +157,7 @@ class Device:
 
         _LOGGER.debug("Characteristic callback result: %s", self.state)
 
-    def detection_callback(self, advertisement_data: AdvertisementData):
+    def detection_callback(self, device: BLEDevice, advertisement_data: AdvertisementData):
         """Handle scanner data."""
         data = advertisement_data.manufacturer_data.get(ANNOUNCE_MANUFACTURER)
         if data is None:
@@ -169,7 +173,7 @@ class Device:
             _LOGGER.debug("Missing key in manufacturer data %s", data)
             return
 
-        self.state = self.state.replace_from_manufacture_data(data)
+        self.state = self.state.replace_from_manufacture_data(data, rssi=device.rssi)
 
         _LOGGER.debug("Detection callback result: %s", self.state)
 
