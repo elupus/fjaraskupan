@@ -120,13 +120,12 @@ class Device:
         self._keycode = keycode
         self.state = State()
         self.lock = asyncio.Lock()
-        self._client: None | BleakClient = None
+        self._client = BleakClient(self.device)
         self._client_count = 0
 
     async def __aenter__(self):
         async with self.lock:
             if self._client_count == 0:
-                self._client = BleakClient(self.device)
                 await self._client.__aenter__()
             self._client_count += 1
             return self
@@ -136,7 +135,6 @@ class Device:
             self._client_count -= 1
             if self._client_count == 0:
                 await self._client.__aexit__(exc_type, exc_val, exc_tb)
-                self._client = None
 
     @property
     def address(self):
