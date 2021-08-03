@@ -10,6 +10,7 @@ from uuid import UUID
 from bleak import BleakClient
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
+from bleak.exc import BleakError
 
 COMMAND_FORMAT_FAN_SPEED_FORMAT = "-Luft-{:01d}-"
 COMMAND_FORMAT_DIM = "-Dim{:03d}-"
@@ -35,6 +36,15 @@ UUID_CONFIG = UUID("{3e06fdc2-f432-404f-b321-dfa909f5c12c}")
 DEVICE_NAME = "COOKERHOOD_FJAR"
 ANNOUNCE_PREFIX = b"HOODFJAR"
 ANNOUNCE_MANUFACTURER = int.from_bytes(ANNOUNCE_PREFIX[0:2], "little")
+
+class FjaraskupanError(Exception):
+    pass
+
+class FjaraskupanBleakError(FjaraskupanError):
+    pass
+
+class FjaraskupanTimeout(FjaraskupanError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -126,7 +136,14 @@ class Device:
     async def __aenter__(self):
         async with self.lock:
             if self._client_count == 0:
-                await self._client.__aenter__()
+                try:
+                    await self._client.__aenter__()
+                except TimeoutError as exc:
+                    _LOGGER.debug("Timeout on connect", exc_info=True)
+                    raise FjaraskupanTimeout("Timeout on connect") from exc
+                except BleakError as exc:
+                    _LOGGER.debug("Error on connect", exc_info=True)
+                    raise FjaraskupanBleakError("Error on connect") from exc
             self._client_count += 1
             return self
 
@@ -179,7 +196,15 @@ class Device:
         """Update internal state."""
         async with self:
             async with self.lock:
-                databytes = await self._client.read_gatt_char(UUID_RX)
+                try:
+                    databytes = await self._client.read_gatt_char(UUID_RX)
+                except TimeoutError as exc:
+                    _LOGGER.debug("Timeout on update", exc_info=True)
+                    raise FjaraskupanTimeout from exc
+                except BleakError as exc:
+                    _LOGGER.debug("Failed to update", exc_info=True)
+                    raise FjaraskupanBleakError("Failed to update device") from exc
+
                 self.characteristic_callback(databytes)
 
     async def send_command(self, cmd: str):
@@ -188,7 +213,14 @@ class Device:
         async with self:
             async with self.lock:
                 data = self._keycode + cmd.encode("ASCII")
-                await self._client.write_gatt_char(UUID_RX, data, True)
+                try:
+                    await self._client.write_gatt_char(UUID_RX, data, True)
+                except TimeoutError as exc:
+                    _LOGGER.debug("Timeout on write", exc_info=True)
+                    raise FjaraskupanTimeout from exc
+                except BleakError as exc:
+                    _LOGGER.debug("Failed to write", exc_info=True)
+                    raise FjaraskupanBleakError("Failed to write") from exc
 
         if cmd == COMMAND_STOP_FAN:
             self.state = replace(self.state, fan_speed=0)
