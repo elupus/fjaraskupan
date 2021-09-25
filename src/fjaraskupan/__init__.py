@@ -118,7 +118,11 @@ def _bittest(data: int, bit: int):
 
 
 def device_filter(device: BLEDevice, advertisement_data: AdvertisementData) -> bool:
-    return device.name == DEVICE_NAME
+    if device.name == DEVICE_NAME:
+        return True
+
+    broadcast = device.metadata.get("manufacturer_data", {}).get(ANNOUNCE_MANUFACTURER, b'')
+    return broadcast.startswith(ANNOUNCE_PREFIX[2:])
 
 
 class Device:
