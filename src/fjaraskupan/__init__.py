@@ -187,9 +187,6 @@ class Device:
         """Handle scanner data."""
         data = advertisement_data.manufacturer_data.get(ANNOUNCE_MANUFACTURER)
         if data is None:
-            _LOGGER.debug(
-                "Missing manufacturer data in advertisement %s", advertisement_data
-            )
             return
         # Recover full manufacturer data. It's breakinging standard by
         # not providing a manufacturer prefix here.
