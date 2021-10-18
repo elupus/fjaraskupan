@@ -83,17 +83,22 @@ class State:
 
     def replace_from_manufacture_data(self, data: bytes, **changes: Any):
         """Update state based on broadcasted data."""
+        light_on = _bittest(data[10], 0)
+        dim_level = _range_check_dim(data[13], self.dim_level)
+        if light_on and not self.light_on and dim_level < self.dim_level:
+            light_on = False
+
         return replace(
             self,
             fan_speed=int(data[8]),
             after_cooking_fan_speed=int(data[9]),
-            light_on=_bittest(data[10], 0),
+            light_on=light_on,
             after_cooking_on=_bittest(data[10], 1),
             periodic_venting_on=_bittest(data[10], 2),
             grease_filter_full=_bittest(data[11], 0),
             carbon_filter_full=_bittest(data[11], 1),
             carbon_filter_available=_bittest(data[11], 2),
-            dim_level=_range_check_dim(data[13], self.dim_level),
+            dim_level=dim_level,
             periodic_venting=_range_check_period(data[14], self.periodic_venting),
             **changes
         )
