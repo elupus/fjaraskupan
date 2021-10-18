@@ -154,7 +154,7 @@ class Device:
             if self._client_count == 0:
                 try:
                     await self._client.__aenter__()
-                except TimeoutError as exc:
+                except asyncio.TimeoutError as exc:
                     _LOGGER.debug("Timeout on connect", exc_info=True)
                     raise FjaraskupanTimeout("Timeout on connect") from exc
                 except BleakError as exc:
@@ -211,7 +211,7 @@ class Device:
             async with self.lock:
                 try:
                     databytes = await self._client.read_gatt_char(UUID_RX)
-                except TimeoutError as exc:
+                except asyncio.TimeoutError as exc:
                     _LOGGER.debug("Timeout on update", exc_info=True)
                     raise FjaraskupanTimeout from exc
                 except BleakError as exc:
@@ -228,7 +228,7 @@ class Device:
                 data = self._keycode + cmd.encode("ASCII")
                 try:
                     await self._client.write_gatt_char(UUID_RX, data, True)
-                except TimeoutError as exc:
+                except asyncio.TimeoutError as exc:
                     _LOGGER.debug("Timeout on write", exc_info=True)
                     raise FjaraskupanTimeout from exc
                 except BleakError as exc:
