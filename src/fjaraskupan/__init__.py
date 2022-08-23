@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 import logging
-from typing import Any
+from typing import Any, AsyncIterator
 from uuid import UUID
 
 from bleak import BleakClient
@@ -140,41 +141,30 @@ def device_filter(device: BLEDevice, advertisement_data: AdvertisementData) -> b
 class Device:
     """Communication handler."""
 
-    def __init__(self, device: BLEDevice | str, keycode=b"1234") -> None:
+
+    def __init__(self, address: str, keycode=b"1234") -> None:
         """Initialize handler."""
-        self.device = device
+        self.address = address
         self._keycode = keycode
         self.state = State()
-        self.lock = asyncio.Lock()
-        self._client = BleakClient(self.device)
-        self._client_count = 0
+        self._lock = asyncio.Lock()
+        self._client: BleakClient | None
 
-    async def __aenter__(self):
-        async with self.lock:
-            if self._client_count == 0:
-                try:
-                    await self._client.__aenter__()
-                except asyncio.TimeoutError as exc:
-                    _LOGGER.debug("Timeout on connect", exc_info=True)
-                    raise FjaraskupanTimeout("Timeout on connect") from exc
-                except BleakError as exc:
-                    _LOGGER.debug("Error on connect", exc_info=True)
-                    raise FjaraskupanBleakError("Error on connect") from exc
-            self._client_count += 1
-            return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        async with self.lock:
-            self._client_count -= 1
-            if self._client_count == 0:
-                await self._client.__aexit__(exc_type, exc_val, exc_tb)
-
-    @property
-    def address(self):
-        """Return address of the device."""
-        if isinstance(self.device, str):
-            return self.device
-        return str(self.device.address)
+    @asynccontextmanager
+    async def connect(self, address_or_ble_device: BLEDevice | str | None = None) -> AsyncIterator[Device]:
+        try:
+            async with self._lock:
+                if address_or_ble_device is None:
+                    address_or_ble_device = self.address
+                async with BleakClient(address_or_ble_device) as client:
+                    self._client = client
+                    yield self
+        except asyncio.TimeoutError as exc:
+            _LOGGER.debug("Timeout on connect", exc_info=True)
+            raise FjaraskupanTimeout("Timeout on connect") from exc
+        except BleakError as exc:
+            _LOGGER.debug("Error on connect", exc_info=True)
+            raise FjaraskupanBleakError("Error on connect") from exc
 
     def characteristic_callback(self, data: bytearray):
         """Handle callback on characteristic change."""
@@ -193,47 +183,48 @@ class Device:
         data = advertisement_data.manufacturer_data.get(ANNOUNCE_MANUFACTURER)
         if data is None:
             return
-        # Recover full manufacturer data. It's breakinging standard by
+        # Recover full manufacturer data. It's breaking standard by
         # not providing a manufacturer prefix here.
         data = ANNOUNCE_PREFIX[0:2] + data
+        self.detection_callback_raw(data, device.rssi)
+
+    def detection_callback_raw(self, data: bytes, rssi: int):
 
         if data[0:8] != ANNOUNCE_PREFIX:
             _LOGGER.debug("Missing key in manufacturer data %s", data)
             return
 
-        self.state = self.state.replace_from_manufacture_data(data, rssi=device.rssi)
+        self.state = self.state.replace_from_manufacture_data(data, rssi=rssi)
 
         _LOGGER.debug("Detection callback result: %s", self.state)
 
     async def update(self):
         """Update internal state."""
-        async with self:
-            async with self.lock:
-                try:
-                    databytes = await self._client.read_gatt_char(UUID_RX)
-                except asyncio.TimeoutError as exc:
-                    _LOGGER.debug("Timeout on update", exc_info=True)
-                    raise FjaraskupanTimeout from exc
-                except BleakError as exc:
-                    _LOGGER.debug("Failed to update", exc_info=True)
-                    raise FjaraskupanBleakError("Failed to update device") from exc
+        assert self._client, "Device must be connected"
+        try:
+            databytes = await self._client.read_gatt_char(UUID_RX)
+        except asyncio.TimeoutError as exc:
+            _LOGGER.debug("Timeout on update", exc_info=True)
+            raise FjaraskupanTimeout from exc
+        except BleakError as exc:
+            _LOGGER.debug("Failed to update", exc_info=True)
+            raise FjaraskupanBleakError("Failed to update device") from exc
 
-                self.characteristic_callback(databytes)
+        self.characteristic_callback(databytes)
 
     async def send_command(self, cmd: str):
         """Send given command."""
         assert len(cmd) == 8
-        async with self:
-            async with self.lock:
-                data = self._keycode + cmd.encode("ASCII")
-                try:
-                    await self._client.write_gatt_char(UUID_RX, data, True)
-                except asyncio.TimeoutError as exc:
-                    _LOGGER.debug("Timeout on write", exc_info=True)
-                    raise FjaraskupanTimeout from exc
-                except BleakError as exc:
-                    _LOGGER.debug("Failed to write", exc_info=True)
-                    raise FjaraskupanBleakError("Failed to write") from exc
+        assert self._client, "Device must be connected"
+        data = self._keycode + cmd.encode("ASCII")
+        try:
+            await self._client.write_gatt_char(UUID_RX, data, True)
+        except asyncio.TimeoutError as exc:
+            _LOGGER.debug("Timeout on write", exc_info=True)
+            raise FjaraskupanTimeout from exc
+        except BleakError as exc:
+            _LOGGER.debug("Failed to write", exc_info=True)
+            raise FjaraskupanBleakError("Failed to write") from exc
 
         if cmd == COMMAND_STOP_FAN:
             self.state = replace(self.state, fan_speed=0)
