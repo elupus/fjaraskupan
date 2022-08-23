@@ -9,7 +9,7 @@ with open(path.join(this_directory, "README.rst"), encoding="utf-8") as f:
 
 setup(
     name="fjaraskupan",
-    version="1.0.2",
+    version="2.0.0",
     description="A python library for speaking to fjäråskupan",
     long_description=long_description,
     long_description_content_type="text/x-rst",

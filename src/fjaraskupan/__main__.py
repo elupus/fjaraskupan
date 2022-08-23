@@ -38,7 +38,7 @@ async def async_scan(args):
         await asyncio.sleep(args.timeout)
 
 async def async_light(args):
-    async with Device(args.device) as device:
+    async with Device(args.device).connect() as device:
         await device.update()
 
         if args.level == 0:
@@ -52,17 +52,17 @@ async def async_light(args):
 
 
 async def async_fan(args):
-    async with Device(args.device) as device:
+    async with Device(args.device).connect() as device:
         await device.send_fan_speed(args.speed)
 
 
 async def async_state(args):
-    async with Device(args.device) as device:
+    async with Device(args.device).connect() as device:
         await device.update()
         print(device.state)
 
 async def async_command(args):
-    async with Device(args.device) as device:
+    async with Device(args.device).connect() as device:
         await device.send_command(args.command)
 
 async def main():
