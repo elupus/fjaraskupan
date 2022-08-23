@@ -156,9 +156,14 @@ class Device:
             async with self._lock:
                 if address_or_ble_device is None:
                     address_or_ble_device = self.address
+
                 async with BleakClient(address_or_ble_device) as client:
                     self._client = client
-                    yield self
+                    try:
+                        yield self
+                    finally:
+                        self._client = None
+
         except asyncio.TimeoutError as exc:
             _LOGGER.debug("Timeout on connect", exc_info=True)
             raise FjaraskupanTimeout("Timeout on connect") from exc
