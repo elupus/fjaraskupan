@@ -28,13 +28,12 @@ parse_command = subparsers.add_parser("command")
 parse_command.add_argument("command", type=str)
 
 async def async_scan(args):
-    async with BleakScanner() as scanner:
 
-        async def detection(device: BLEDevice, advertisement_data: AdvertisementData):
-            if device_filter(device, advertisement_data):
-                print(f"Detection: {device} - {advertisement_data}")
+    async def detection(device: BLEDevice, advertisement_data: AdvertisementData):
+        if device_filter(device, advertisement_data):
+            print(f"Detection: {device} - {advertisement_data}")
 
-        scanner.register_detection_callback(detection)
+    async with BleakScanner(detection_callback=detection):
         await asyncio.sleep(args.timeout)
 
 async def async_light(args):
