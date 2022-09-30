@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, replace
 import logging
 from typing import Any, AsyncIterator
@@ -148,28 +148,40 @@ class Device:
         self._keycode = keycode
         self.state = State()
         self._lock = asyncio.Lock()
-        self._client: BleakClient | None
+        self._client: BleakClient | None = None
+        self._client_count = 0
+        self._client_stack = AsyncExitStack()
 
     @asynccontextmanager
     async def connect(self, address_or_ble_device: BLEDevice | str | None = None) -> AsyncIterator[Device]:
+        if address_or_ble_device is None:
+            address_or_ble_device = self.address
+
+        async with self._lock:
+            if not self._client:
+                _LOGGER.debug("Connecting")
+                try:
+                    self._client = await self._client_stack.enter_async_context(BleakClient(address_or_ble_device))
+                except asyncio.TimeoutError as exc:
+                    _LOGGER.debug("Timeout on connect", exc_info=True)
+                    raise FjaraskupanTimeout("Timeout on connect") from exc
+                except BleakError as exc:
+                    _LOGGER.debug("Error on connect", exc_info=True)
+                    raise FjaraskupanBleakError("Error on connect") from exc
+            else:
+                _LOGGER.debug("Connection reused")
+            self._client_count += 1
+
         try:
             async with self._lock:
-                if address_or_ble_device is None:
-                    address_or_ble_device = self.address
-
-                async with BleakClient(address_or_ble_device) as client:
-                    self._client = client
-                    try:
-                        yield self
-                    finally:
-                        self._client = None
-
-        except asyncio.TimeoutError as exc:
-            _LOGGER.debug("Timeout on connect", exc_info=True)
-            raise FjaraskupanTimeout("Timeout on connect") from exc
-        except BleakError as exc:
-            _LOGGER.debug("Error on connect", exc_info=True)
-            raise FjaraskupanBleakError("Error on connect") from exc
+                yield self
+        finally:
+            async with self._lock:
+                self._client_count -= 1
+                if self._client_count == 0:
+                    self._client = None
+                    _LOGGER.debug("Disconnected")
+                    await self._client_stack.pop_all().aclose()
 
     def characteristic_callback(self, data: bytearray):
         """Handle callback on characteristic change."""
