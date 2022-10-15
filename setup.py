@@ -18,7 +18,7 @@ setup(
     package_dir={"": "src"},
     python_requires=">=3.8",
     author="Joakim Plate",
-    install_requires=["bleak"],
+    install_requires=["bleak>=0.19"],
     extras_require={
         "tests": [
             "pytest>3.6.4",
