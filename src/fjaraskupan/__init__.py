@@ -124,15 +124,15 @@ def _bittest(data: int, bit: int):
 
 
 def device_filter(device: BLEDevice, advertisement_data: AdvertisementData) -> bool:
-    uuids = device.metadata.get("uuids", [])
+    uuids = advertisement_data.service_uuids
     if str(UUID_SERVICE) in uuids:
         return True
 
     if device.name == DEVICE_NAME:
         return True
 
-    broadcast = device.metadata.get("manufacturer_data", {}).get(ANNOUNCE_MANUFACTURER, b'')
-    if broadcast.startswith(ANNOUNCE_PREFIX[2:]):
+    manufacturer_data = advertisement_data.manufacturer_data.get(ANNOUNCE_MANUFACTURER, b'')
+    if manufacturer_data.startswith(ANNOUNCE_PREFIX[2:]):
         return True
 
     return False
@@ -203,7 +203,7 @@ class Device:
         # Recover full manufacturer data. It's breaking standard by
         # not providing a manufacturer prefix here.
         data = ANNOUNCE_PREFIX[0:2] + data
-        self.detection_callback_raw(data, device.rssi)
+        self.detection_callback_raw(data, advertisement_data.rssi)
 
     def detection_callback_raw(self, data: bytes, rssi: int):
 
