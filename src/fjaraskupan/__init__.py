@@ -44,7 +44,16 @@ class FjaraskupanError(Exception):
 class FjaraskupanBleakError(FjaraskupanError):
     pass
 
-class FjaraskupanTimeout(FjaraskupanError):
+class FjaraskupanConnectionError(FjaraskupanBleakError):
+    pass
+
+class FjaraskupanWriteError(FjaraskupanBleakError):
+    pass
+
+class FjaraskupanReadError(FjaraskupanBleakError):
+    pass
+
+class FjaraskupanTimeout(FjaraskupanError, TimeoutError):
     pass
 
 
@@ -142,7 +151,7 @@ class Device:
     """Communication handler."""
 
 
-    def __init__(self, address: str, keycode=b"1234") -> None:
+    def __init__(self, address: str, keycode=b"1234", disconnect_delay: float = 5.0) -> None:
         """Initialize handler."""
         self.address = address
         self._keycode = keycode
@@ -151,26 +160,61 @@ class Device:
         self._client: BleakClient | None = None
         self._client_count = 0
         self._client_stack = AsyncExitStack()
+        self._disconnect_delay = disconnect_delay
+        self._disconnect_task: asyncio.Task | None = None
 
-    @asynccontextmanager
-    async def connect(self, address_or_ble_device: BLEDevice | str | None = None) -> AsyncIterator[Device]:
+    async def _disconnect_callback(self):
+        await asyncio.sleep(self._disconnect_delay)
+        async with self._lock:
+            await self._disconnect()
+
+    async def _disconnect_later(self):
+        self._disconnect_task = asyncio.create_task(self._disconnect_callback(), name="Fjaraskupen Disconnector")
+        
+    async def _disconnect(self):
+        assert self._client
+        self._client = None
+
+        _LOGGER.debug("Disconnecting")
+        try:
+            await self._client_stack.pop_all().aclose()
+        except TimeoutError as exc:
+            _LOGGER.debug("Timeout on disconnect", exc_info=True)
+            raise FjaraskupanTimeout("Timeout on disconnect") from exc
+        except BleakError as exc:
+            _LOGGER.debug("Error on disconnect", exc_info=True)
+            raise FjaraskupanConnectionError("Error on disconnect") from exc
+        _LOGGER.debug("Disconnected")
+
+    async def _connect(self, address_or_ble_device: BLEDevice | str):
         if address_or_ble_device is None:
             address_or_ble_device = self.address
 
+        assert self._client is None
+
+        _LOGGER.debug("Connecting")
+        try:
+            self._client = await self._client_stack.enter_async_context(BleakClient(address_or_ble_device))
+        except asyncio.TimeoutError as exc:
+            _LOGGER.debug("Timeout on connect", exc_info=True)
+            raise FjaraskupanTimeout("Timeout on connect") from exc
+        except BleakError as exc:
+            _LOGGER.debug("Error on connect", exc_info=True)
+            raise FjaraskupanConnectionError("Error on connect") from exc
+        _LOGGER.debug("Connected")
+    
+    @asynccontextmanager
+    async def connect(self, address_or_ble_device: BLEDevice | str | None = None) -> AsyncIterator[Device]:
         async with self._lock:
-            if not self._client:
-                _LOGGER.debug("Connecting")
-                try:
-                    self._client = await self._client_stack.enter_async_context(BleakClient(address_or_ble_device))
-                except asyncio.TimeoutError as exc:
-                    _LOGGER.debug("Timeout on connect", exc_info=True)
-                    raise FjaraskupanTimeout("Timeout on connect") from exc
-                except BleakError as exc:
-                    _LOGGER.debug("Error on connect", exc_info=True)
-                    raise FjaraskupanBleakError("Error on connect") from exc
+            if self._disconnect_task:
+                self._disconnect_task.cancel()
+                self._disconnect_task = None
+
+            self._client_count += 1
+            if self._client is None:
+                await self._connect(address_or_ble_device)
             else:
                 _LOGGER.debug("Connection reused")
-            self._client_count += 1
 
         try:
             async with self._lock:
@@ -179,9 +223,11 @@ class Device:
             async with self._lock:
                 self._client_count -= 1
                 if self._client_count == 0:
-                    self._client = None
-                    _LOGGER.debug("Disconnected")
-                    await self._client_stack.pop_all().aclose()
+                    if self._disconnect_delay:
+                        await self._disconnect_later()
+                    else:
+                        await self._disconnect()
+
 
     def characteristic_callback(self, data: bytearray):
         """Handle callback on characteristic change."""
@@ -225,7 +271,7 @@ class Device:
             raise FjaraskupanTimeout from exc
         except BleakError as exc:
             _LOGGER.debug("Failed to update", exc_info=True)
-            raise FjaraskupanBleakError("Failed to update device") from exc
+            raise FjaraskupanReadError("Failed to update device") from exc
 
         self.characteristic_callback(databytes)
 
@@ -241,7 +287,7 @@ class Device:
             raise FjaraskupanTimeout from exc
         except BleakError as exc:
             _LOGGER.debug("Failed to write", exc_info=True)
-            raise FjaraskupanBleakError("Failed to write") from exc
+            raise FjaraskupanWriteError("Failed to write") from exc
 
         if cmd == COMMAND_STOP_FAN:
             self.state = replace(self.state, fan_speed=0)
