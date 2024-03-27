@@ -217,8 +217,7 @@ class Device:
                 _LOGGER.debug("Connection reused")
 
         try:
-            async with self._lock:
-                yield self
+            yield self
         finally:
             async with self._lock:
                 self._client_count -= 1
@@ -262,6 +261,10 @@ class Device:
         _LOGGER.debug("Detection callback result: %s", self.state)
 
     async def update(self):
+        async with self._lock:
+            await self._update()
+
+    async def _update(self):
         """Update internal state."""
         assert self._client, "Device must be connected"
         try:
@@ -276,6 +279,11 @@ class Device:
         self.characteristic_callback(databytes)
 
     async def send_command(self, cmd: str):
+        """Send given command."""
+        async with self._lock:
+            await self._send_command(cmd)
+
+    async def _send_command(self, cmd: str):
         """Send given command."""
         assert len(cmd) == 8
         assert self._client, "Device must be connected"
@@ -302,20 +310,24 @@ class Device:
 
     async def send_fan_speed(self, speed: int):
         """Set numbered fan speed."""
-        await self.send_command(COMMAND_FORMAT_FAN_SPEED_FORMAT.format(speed))
-        self.state = replace(self.state, fan_speed=speed)
+        async with self._lock:
+            await self._send_command(COMMAND_FORMAT_FAN_SPEED_FORMAT.format(speed))
+            self.state = replace(self.state, fan_speed=speed)
 
     async def send_after_cooking(self, speed: int):
         """Set numbered fan speed."""
-        await self.send_command(COMMAND_FORMAT_AFTERCOOKINGSTRENGTHMANUAL.format(speed))
-        self.state = replace(self.state, after_cooking_fan_speed=speed)
+        async with self._lock:
+            await self._send_command(COMMAND_FORMAT_AFTERCOOKINGSTRENGTHMANUAL.format(speed))
+            self.state = replace(self.state, after_cooking_fan_speed=speed)
 
     async def send_periodic_venting(self, minutes: int):
         """Set periodic venting."""
-        await self.send_command(COMMAND_FORMAT_PERIODIC_VENTING.format(minutes))
-        self.state = replace(self.state, periodic_venting=minutes)
+        async with self._lock:
+            await self._send_command(COMMAND_FORMAT_PERIODIC_VENTING.format(minutes))
+            self.state = replace(self.state, periodic_venting=minutes)
 
     async def send_dim(self, level: int):
         """Ask to dim to a certain level."""
-        await self.send_command(COMMAND_FORMAT_DIM.format(level))
-        self.state = replace(self.state, dim_level=level)
+        async with self._lock:
+            await self._send_command(COMMAND_FORMAT_DIM.format(level))
+            self.state = replace(self.state, dim_level=level, light_on=True)
