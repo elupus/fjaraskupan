@@ -293,8 +293,6 @@ class Device:
             self.state = replace(self.state, fan_speed=0)
         elif cmd == COMMAND_LIGHT_ON_OFF:
             self.state = replace(self.state, light_on=not self.state.light_on)
-        elif cmd == COMMAND_STOP_FAN:
-            self.state = replace(self.state, fan_speed=0)
         elif cmd == COMMAND_AFTERCOOKINGTIMERMANUAL:
             self.state = replace(self.state, after_cooking_on=True)
         elif cmd == COMMAND_AFTERCOOKINGTIMERAUTO:
