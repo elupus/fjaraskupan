@@ -329,5 +329,9 @@ class Device:
     async def send_dim(self, level: int):
         """Ask to dim to a certain level."""
         async with self._lock:
+            if not self.state.light_on:
+                await self._send_command(COMMAND_LIGHT_ON_OFF)
+                # Dim to 100 to stop the ramping up
+                await self._send_command(COMMAND_FORMAT_DIM.format(100))
             await self._send_command(COMMAND_FORMAT_DIM.format(level))
             self.state = replace(self.state, dim_level=level, light_on=True)
