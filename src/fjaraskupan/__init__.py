@@ -210,11 +210,11 @@ class Device:
                 self._disconnect_task.cancel()
                 self._disconnect_task = None
 
-            self._client_count += 1
             if self._client is None:
                 await self._connect(address_or_ble_device)
             else:
                 _LOGGER.debug("Connection reused")
+            self._client_count += 1
 
         try:
             yield self
