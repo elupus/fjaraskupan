@@ -8,10 +8,12 @@ import logging
 from typing import Any, AsyncIterator
 from uuid import UUID
 
-from bleak import BleakClient
+from bleak import BleakClient, BleakScanner
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
 from bleak.exc import BleakError
+
+from bleak_retry_connector import establish_connection
 
 COMMAND_FORMAT_FAN_SPEED_FORMAT = "-Luft-{:01d}-"
 COMMAND_FORMAT_DIM = "-Dim{:03d}-"
@@ -186,7 +188,7 @@ class Device:
             raise FjaraskupanConnectionError("Error on disconnect") from exc
         _LOGGER.debug("Disconnected")
 
-    async def _connect(self, address_or_ble_device: BLEDevice | str):
+    async def _connect(self, address_or_ble_device: BLEDevice | str | None = None):
         if address_or_ble_device is None:
             address_or_ble_device = self.address
 
@@ -194,7 +196,13 @@ class Device:
 
         _LOGGER.debug("Connecting")
         try:
-            self._client = await self._client_stack.enter_async_context(BleakClient(address_or_ble_device))
+            if isinstance(address_or_ble_device, BLEDevice):
+                ble_device = address_or_ble_device
+            else:
+                ble_device = await BleakScanner.find_device_by_address(address_or_ble_device)
+
+            self._client = await establish_connection(BleakClient, ble_device, name="Fjaraskupan")
+            self._client_stack.push_async_exit(self._client)
         except asyncio.TimeoutError as exc:
             _LOGGER.debug("Timeout on connect", exc_info=True)
             raise FjaraskupanTimeout("Timeout on connect") from exc
@@ -204,7 +212,7 @@ class Device:
         _LOGGER.debug("Connected")
     
     @asynccontextmanager
-    async def connect(self, address_or_ble_device: BLEDevice | str | None = None) -> AsyncIterator[Device]:
+    async def connect(self, address_or_ble_device: BLEDevice | None = None) -> AsyncIterator[Device]:
         async with self._lock:
             if self._disconnect_task:
                 self._disconnect_task.cancel()
