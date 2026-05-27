@@ -18,11 +18,10 @@ Code to set fan speed using library.
 
 
     async def run():
-        async with Device("AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE") as device:
+        async with Device("AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE").connect() as device:
             await device.set_fan_speed(5)
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete (run())
+    asyncio.run(run())
 
 
 

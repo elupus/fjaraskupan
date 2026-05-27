@@ -39,16 +39,7 @@ async def async_scan(args):
 async def async_light(args):
     async with Device(args.device).connect() as device:
         await device.update()
-
-        if args.level == 0:
-            if device.state.light_on:
-                await device.send_command(COMMAND_LIGHT_ON_OFF)
-        else:
-            if device.state.light_on is False:
-                await device.send_command(COMMAND_LIGHT_ON_OFF)
-                await asyncio.sleep(3)
-            await device.send_dim(args.level)
-
+        await device.send_dim(args.level)
 
 async def async_fan(args):
     async with Device(args.device).connect() as device:
