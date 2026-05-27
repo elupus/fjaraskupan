@@ -86,7 +86,7 @@ class State:
             carbon_filter_available=data[7] == "C",
             grease_filter_full=data[8] == "F",
             carbon_filter_full=data[9] == "K",
-            dim_level=_range_check_dim(int(data[10:13]), self.dim_level),
+            dim_level=_range_check_dim_bytes(data[10:13], self.dim_level),
             periodic_venting=_range_check_period(
                 int(data[13:15]), self.periodic_venting
             ),
@@ -121,6 +121,14 @@ def _range_check_dim(value: int, fallback: int):
         return value
     else:
         return fallback
+
+def _range_check_dim_bytes(bytes: bytes, fallback: int):
+    try:
+        value = int(bytes)
+    except ValueError:
+        return fallback
+    return _range_check_dim(value, fallback)
+
 
 
 def _range_check_period(value: int, fallback: int):
@@ -337,7 +345,24 @@ class Device:
     async def send_dim(self, level: int):
         """Ask to dim to a certain level."""
         async with self._lock:
-            if self.state.light_on ^ (level > 0):
-                await self._send_command(COMMAND_LIGHT_ON_OFF)
-            await self._send_command(COMMAND_FORMAT_DIM.format(level))
+            if level > 0:
+                #if not self.state.light_on:
+                #    await self._send_command(COMMAND_LIGHT_ON_OFF)
+                if not self.state.light_on:
+                    # Turn on triggers ramping up to 100%
+                    await self._send_command(COMMAND_LIGHT_ON_OFF)
+
+                    # Force ramping to complete, this will potentially
+                    # trigger a flicker on startup if target level is
+                    # lower, but device will not stop it's ramp up until
+                    # it has reached 100%
+                    await self._send_command(COMMAND_FORMAT_DIM.format(100))
+
+                await self._send_command(COMMAND_FORMAT_DIM.format(level))
+            else:
+                if self.state.light_on:
+                    # Ensure we bypass ramping down
+                    await self._send_command(COMMAND_FORMAT_DIM.format(1))
+                    # Ensure relay is turned off
+                    await self._send_command(COMMAND_LIGHT_ON_OFF)
             self.state = replace(self.state, dim_level=level, light_on=level > 0)

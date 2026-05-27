@@ -1,6 +1,6 @@
 [project]
 name = "fjaraskupan"
-version = "2.3.3"
+version = "2.3.4"
 description = "A python library for speaking to fjäråskupan"
 readme = "README.rst"
 authors = [
