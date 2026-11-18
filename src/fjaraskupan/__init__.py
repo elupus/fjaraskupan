@@ -36,6 +36,13 @@ UUID_RX = UUID("{23123e0a-1ad6-43a6-96ac-06f57995330d}")
 UUID_TX = UUID("{68ecc82c-928d-4af0-aa60-0d578ffb35f7}")
 UUID_CONFIG = UUID("{3e06fdc2-f432-404f-b321-dfa909f5c12c}")
 
+UUID_MANUFACTURER_NAME = UUID("{00002a29-0000-1000-8000-00805f9b34fb}")
+UUID_MODEL_NUMBER = UUID("{00002a24-0000-1000-8000-00805f9b34fb}")
+UUID_SERIAL_NUMBER = UUID("{00002a25-0000-1000-8000-00805f9b34fb}")
+UUID_HARDWARE_REVISION = UUID("{00002a27-0000-1000-8000-00805f9b34fb}")
+UUID_FIRMWARE_REVISION = UUID("{00002a26-0000-1000-8000-00805f9b34fb}")
+UUID_SOFTWARE_REVISION = UUID("{00002a28-0000-1000-8000-00805f9b34fb}")
+
 DEVICE_NAME = "COOKERHOOD_FJAR"
 ANNOUNCE_PREFIX = b"HOODFJAR"
 ANNOUNCE_MANUFACTURER = int.from_bytes(ANNOUNCE_PREFIX[0:2], "little")
@@ -114,6 +121,33 @@ class State:
             periodic_venting=_range_check_period(data[14], self.periodic_venting),
             **changes
         )
+
+
+@dataclass(frozen=True)
+class DeviceInfo:
+    """Standard BLE Device Information, as reported by the radio module.
+
+    On the hoods tested this describes the BLE module (for example
+    u-blox NINA-B1), not the hood's own controller. Fields the device
+    does not expose are None.
+    """
+
+    manufacturer: str | None = None
+    model: str | None = None
+    serial_number: str | None = None
+    hardware_revision: str | None = None
+    firmware_revision: str | None = None
+    software_revision: str | None = None
+
+
+_DEVICE_INFO_FIELDS = {
+    "manufacturer": UUID_MANUFACTURER_NAME,
+    "model": UUID_MODEL_NUMBER,
+    "serial_number": UUID_SERIAL_NUMBER,
+    "hardware_revision": UUID_HARDWARE_REVISION,
+    "firmware_revision": UUID_FIRMWARE_REVISION,
+    "software_revision": UUID_SOFTWARE_REVISION,
+}
 
 
 def _range_check_dim(value: int, fallback: int):
@@ -293,6 +327,29 @@ class Device:
             raise FjaraskupanReadError("Failed to update device") from exc
 
         self.characteristic_callback(databytes)
+
+    async def read_device_info(self) -> DeviceInfo:
+        """Read the standard Device Information service."""
+        async with self._lock:
+            return await self._read_device_info()
+
+    async def _read_device_info(self) -> DeviceInfo:
+        assert self._client, "Device must be connected"
+        values: dict[str, str] = {}
+        for field, uuid in _DEVICE_INFO_FIELDS.items():
+            char = self._client.services.get_characteristic(uuid)
+            if char is None:
+                continue
+            try:
+                data = await self._client.read_gatt_char(char)
+            except asyncio.TimeoutError as exc:
+                _LOGGER.debug("Timeout on device info read", exc_info=True)
+                raise FjaraskupanTimeout from exc
+            except BleakError as exc:
+                _LOGGER.debug("Failed to read device info", exc_info=True)
+                raise FjaraskupanReadError("Failed to read device info") from exc
+            values[field] = bytes(data).decode("utf-8", errors="replace").rstrip("\x00").strip()
+        return DeviceInfo(**values)
 
     async def send_command(self, cmd: str):
         """Send given command."""

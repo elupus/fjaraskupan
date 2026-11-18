@@ -81,3 +81,41 @@ def test_parse_rx():
 
     state = State().replace_from_tx_char(b"12348_____10061")
     assert state == replace(state, periodic_venting=0)
+
+
+class _FakeServices:
+    def __init__(self, chars):
+        self._chars = chars
+
+    def get_characteristic(self, uuid):
+        return uuid if str(uuid) in self._chars else None
+
+
+class _FakeClient:
+    def __init__(self, chars):
+        self._chars = chars
+        self.services = _FakeServices(chars)
+
+    async def read_gatt_char(self, char):
+        return bytearray(self._chars[str(char)])
+
+
+def test_read_device_info():
+    import asyncio
+    from fjaraskupan import Device, DeviceInfo
+
+    device = Device("00:00:00:00:00:00")
+    device._client = _FakeClient({
+        "00002a29-0000-1000-8000-00805f9b34fb": b"u-blox",
+        "00002a24-0000-1000-8000-00805f9b34fb": b"NINA-B1",
+        "00002a26-0000-1000-8000-00805f9b34fb": b"5.0.0-011\x00",
+        "00002a28-0000-1000-8000-00805f9b34fb": b"5.0.0-011",
+    })
+
+    info = asyncio.run(device.read_device_info())
+    assert info == DeviceInfo(
+        manufacturer="u-blox",
+        model="NINA-B1",
+        firmware_revision="5.0.0-011",
+        software_revision="5.0.0-011",
+    )
