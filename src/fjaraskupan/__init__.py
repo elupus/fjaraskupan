@@ -16,18 +16,127 @@ from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection
 
 COMMAND_FORMAT_FAN_SPEED_FORMAT = "-Luft-{:01d}-"
+"""Set the fan speed to a level (one digit). Use ``COMMAND_STOP_FAN`` for off.
+
+Supported by: berbel, Fjäråskupan.
+"""
+
 COMMAND_FORMAT_DIM = "-Dim{:03d}-"
+"""Set the light level, 000-100.
+
+Ignored while the light ramps up after ``COMMAND_LIGHT_ON_OFF``; sending
+level 100 first ends the ramp.
+
+Supported by: Fjäråskupan.
+"""
+
 COMMAND_FORMAT_PERIODIC_VENTING = "Period{:02d}"
+"""Set periodic venting: the fan runs at its lowest speed for this many
+minutes (00-59) every hour.
+
+Supported by: Fjäråskupan.
+"""
+
 COMMAND_FORMAT_AFTERCOOKINGSTRENGTHMANUAL = "Nachla-{:01d}"
+"""Turn on after-cooking venting at a fan speed (1-5 in the app).
+
+Supported by: Fjäråskupan.
+"""
 
 COMMAND_STOP_FAN = "Luft-Aus"
+"""Turn the fan off.
+
+Supported by: berbel, Fjäråskupan.
+"""
+
 COMMAND_LIGHT_ON_OFF = "Kochfeld"
+"""Toggle the cooktop light. Turning it on ramps up to full brightness.
+
+Supported by: berbel, Fjäråskupan.
+"""
+
 COMMAND_RESETGREASEFILTER = "ResFett-"
+"""Reset the grease filter full indicator after cleaning the filter.
+
+Supported by: berbel, Fjäråskupan.
+"""
+
 COMMAND_RESETCHARCOALFILTER = "ResKohle"
+"""Reset the carbon filter full indicator after replacing the filter.
+
+Supported by: berbel, Fjäråskupan.
+"""
+
 COMMAND_AFTERCOOKINGTIMERMANUAL = "Nachlauf"
+"""Turn on after-cooking venting: the fan keeps running for 15 minutes,
+then turns off.
+
+Supported by: berbel, Fjäråskupan.
+"""
+
 COMMAND_AFTERCOOKINGTIMERAUTO = "NachlAut"
+"""Turn on after-cooking venting in automatic mode.
+
+Supported by: berbel, Fjäråskupan.
+"""
+
 COMMAND_AFTERCOOKINGTIMEROFF = "NachlAus"
+"""Turn off after-cooking venting.
+
+Supported by: berbel, Fjäråskupan.
+"""
+
 COMMAND_ACTIVATECARBONFILTER = "coal-ava"
+"""Toggle whether a carbon filter is installed (the ``C`` status flag).
+
+Supported by: Fjäråskupan.
+"""
+
+COMMAND_FAN_SPEED_4_FIXED = "-Luft-4F"
+"""Fan level 4, possibly held fixed. Behaves like ``-Luft-4-`` on Fjäråskupan.
+
+Supported by: berbel, Fjäråskupan.
+"""
+
+COMMAND_DIM_START = "DimStart"
+"""Start continuously dimming the light; stop with ``COMMAND_DIM_STOP``.
+
+Supported by: berbel.
+"""
+
+COMMAND_DIM_STOP = "DimStop-"
+"""Stop dimming started with ``COMMAND_DIM_START``.
+
+Supported by: berbel.
+"""
+
+COMMAND_RECIRCULATION = "-Umluft-"
+"""Switch to recirculation mode (air returned to the kitchen).
+
+Supported by: berbel.
+"""
+
+COMMAND_EXHAUST = "-Abluft-"
+"""Switch to exhaust mode (air ducted outside).
+
+Supported by: berbel.
+"""
+
+COMMAND_BLUETOOTH_ACTIVE = "BTAktiv-"
+"""Meaning guessed: mark Bluetooth/panel as active.
+
+Supported by: berbel.
+"""
+
+COMMAND_BLUETOOTH_INACTIVE = "BTInakt-"
+"""Meaning guessed: mark Bluetooth/panel as inactive.
+
+Supported by: berbel.
+
+Warning: this may disable Bluetooth control or the hood's own panel, and
+it is unknown whether ``COMMAND_BLUETOOTH_ACTIVE`` or a power cycle
+restores it. Do not send it unless you can recover the hood.
+"""
 
 _LOGGER = logging.getLogger(__name__)
 
